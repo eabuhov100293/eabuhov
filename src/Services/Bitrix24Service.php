@@ -140,7 +140,151 @@ class Bitrix24Service
         return "✅ Сделка создана!\n\nНазвание: {$title}{$amount}\nID: {$dealId}";
     }
 
+    // ─── Просмотр задач ──────────────────────────────────────────────────────
+
+    public function getTask(array $intent): string
+    {
+        $taskId = (int)($intent['task_id'] ?? 0);
+        if (!$taskId) {
+            return '❌ Укажите ID задачи. Например: «Покажи задачу 123».';
+        }
+
+        $result = $this->call('tasks.task.get', [
+            'taskId' => $taskId,
+            'select' => ['ID', 'TITLE', 'DESCRIPTION', 'STATUS', 'DEADLINE', 'RESPONSIBLE_ID', 'CREATED_DATE'],
+        ]);
+
+        $task = $result['result']['task'] ?? null;
+        if (!$task) {
+            return "❌ Задача #{$taskId} не найдена.";
+        }
+
+        return $this->formatTask($task);
+    }
+
+    public function listMyTasks(array $intent): string
+    {
+        $filter = ['REAL_STATUS' => [2, 3]]; // в работе + ожидание
+        if (!empty($intent['responsible'])) {
+            $userId = $this->findUserId($intent['responsible']);
+            if ($userId) {
+                $filter['RESPONSIBLE_ID'] = $userId;
+            }
+        }
+
+        $result = $this->call('tasks.task.list', [
+            'filter' => $filter,
+            'select' => ['ID', 'TITLE', 'STATUS', 'DEADLINE'],
+            'order'  => ['DEADLINE' => 'ASC'],
+            'params' => ['NAV_PARAMS' => ['nPageSize' => 10]],
+        ]);
+
+        $tasks = $result['result']['tasks'] ?? [];
+        if (empty($tasks)) {
+            return '📋 Активных задач не найдено.';
+        }
+
+        $lines = ['📋 *Активные задачи:*'];
+        foreach ($tasks as $task) {
+            $deadline = $task['deadline'] ? ' — до ' . date('d.m.Y', strtotime($task['deadline'])) : '';
+            $lines[]  = "• [{$task['id']}] {$task['title']}{$deadline}";
+        }
+
+        return implode("\n", $lines);
+    }
+
+    // ─── Поиск в CRM ─────────────────────────────────────────────────────────
+
+    public function searchLeads(array $intent): string
+    {
+        $query = $intent['query'] ?? '';
+        if (!$query) {
+            return '❌ Укажите строку поиска. Например: «Найди лид Иванов».';
+        }
+
+        $result = $this->call('crm.lead.list', [
+            'filter' => ['%TITLE' => $query],
+            'select' => ['ID', 'TITLE', 'NAME', 'PHONE', 'STATUS_ID', 'DATE_CREATE'],
+            'order'  => ['DATE_CREATE' => 'DESC'],
+        ]);
+
+        $leads = $result['result'] ?? [];
+        if (empty($leads)) {
+            return "🔍 Лиды по запросу «{$query}» не найдены.";
+        }
+
+        $lines = ["🔍 *Найдено лидов: " . count($leads) . ":*"];
+        foreach (array_slice($leads, 0, 5) as $lead) {
+            $phone   = $lead['PHONE'][0]['VALUE'] ?? '';
+            $phoneStr = $phone ? " | {$phone}" : '';
+            $lines[] = "• [{$lead['ID']}] {$lead['TITLE']}{$phoneStr}";
+        }
+
+        return implode("\n", $lines);
+    }
+
+    public function searchDeals(array $intent): string
+    {
+        $query = $intent['query'] ?? '';
+        if (!$query) {
+            return '❌ Укажите строку поиска. Например: «Найди сделку оборудование».';
+        }
+
+        $result = $this->call('crm.deal.list', [
+            'filter' => ['%TITLE' => $query],
+            'select' => ['ID', 'TITLE', 'OPPORTUNITY', 'CURRENCY_ID', 'STAGE_ID', 'DATE_CREATE'],
+            'order'  => ['DATE_CREATE' => 'DESC'],
+        ]);
+
+        $deals = $result['result'] ?? [];
+        if (empty($deals)) {
+            return "🔍 Сделки по запросу «{$query}» не найдены.";
+        }
+
+        $lines = ["🔍 *Найдено сделок: " . count($deals) . ":*"];
+        foreach (array_slice($deals, 0, 5) as $deal) {
+            $amount   = $deal['OPPORTUNITY'] ? ' | ' . number_format((float)$deal['OPPORTUNITY'], 0, '.', ' ') . ' ' . $deal['CURRENCY_ID'] : '';
+            $lines[]  = "• [{$deal['ID']}] {$deal['TITLE']}{$amount}";
+        }
+
+        return implode("\n", $lines);
+    }
+
     // ─── Вспомогательные методы ───────────────────────────────────────────────
+
+    private function formatTask(array $task): string
+    {
+        $statusMap = [
+            '1' => 'Ждёт выполнения',
+            '2' => 'В работе',
+            '3' => 'Ожидание',
+            '4' => 'Завершена',
+            '5' => 'Отклонена',
+            '6' => 'Считается завершённой',
+        ];
+
+        $status   = $statusMap[$task['status'] ?? ''] ?? 'Неизвестно';
+        $deadline = !empty($task['deadline'])
+            ? date('d.m.Y H:i', strtotime($task['deadline']))
+            : 'не указан';
+        $created  = !empty($task['createdDate'])
+            ? date('d.m.Y', strtotime($task['createdDate']))
+            : '';
+
+        $text  = "📌 *Задача #{$task['id']}*\n";
+        $text .= "Название: {$task['title']}\n";
+        $text .= "Статус: {$status}\n";
+        $text .= "Срок: {$deadline}\n";
+        if ($created) {
+            $text .= "Создана: {$created}\n";
+        }
+        if (!empty($task['description'])) {
+            $desc = mb_substr(strip_tags($task['description']), 0, 200);
+            $text .= "Описание: {$desc}";
+        }
+
+        return $text;
+    }
 
     private function findUserId(string $name): ?int
     {

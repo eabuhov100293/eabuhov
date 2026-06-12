@@ -30,6 +30,38 @@ class TelegramService
         $this->call('sendMessage', $params);
     }
 
+    public function sendVoice(int $chatId, string $audioData): void
+    {
+        $tmpFile = tempnam(sys_get_temp_dir(), 'tts_') . '.ogg';
+        file_put_contents($tmpFile, $audioData);
+
+        $url = "{$this->apiBase}/sendVoice";
+        $ch  = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => [
+                'chat_id' => $chatId,
+                'voice'   => new \CURLFile($tmpFile, 'audio/ogg', 'voice.ogg'),
+            ],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 30,
+        ]);
+
+        $result = curl_exec($ch);
+        $error  = curl_error($ch);
+        curl_close($ch);
+        @unlink($tmpFile);
+
+        if ($error) {
+            $this->log->error("sendVoice cURL error: {$error}");
+        }
+
+        $decoded = json_decode($result, true);
+        if (!($decoded['ok'] ?? false)) {
+            $this->log->error('sendVoice API error', ['response' => $decoded]);
+        }
+    }
+
     public function downloadFile(string $fileId): string
     {
         $response = $this->call('getFile', ['file_id' => $fileId]);

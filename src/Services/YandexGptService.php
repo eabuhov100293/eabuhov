@@ -25,7 +25,8 @@ class YandexGptService
 
     /**
      * Возвращает массив с полями:
-     *   action: create_task | update_task | create_lead | create_deal | unknown
+     *   action: create_task | update_task | get_task | list_tasks |
+     *           create_lead | create_deal | search_leads | search_deals | unknown
      *   + поля, специфичные для каждого action
      */
     public function parseIntent(string $userText): ?array
@@ -89,54 +90,44 @@ class YandexGptService
 Сегодняшняя дата: {$today}
 
 Возможные действия (поле "action"):
-1. create_task    — создание задачи
-2. update_task    — изменение срока задачи
-3. create_lead    — создание лида в CRM
-4. create_deal    — создание сделки в CRM
-5. unknown        — команда не распознана
+1.  create_task   — создание задачи
+2.  update_task   — изменение срока задачи
+3.  get_task      — просмотр одной задачи по ID
+4.  list_tasks    — список активных задач
+5.  create_lead   — создание лида в CRM
+6.  create_deal   — создание сделки в CRM
+7.  search_leads  — поиск лидов по названию или имени
+8.  search_deals  — поиск сделок по названию
+9.  unknown       — команда не распознана
 
 Схемы JSON для каждого действия:
 
 create_task:
-{
-  "action": "create_task",
-  "title": "Название задачи (обязательно)",
-  "description": "Описание (если есть, иначе '')",
-  "responsible": "Имя ответственного (если есть, иначе '')",
-  "deadline": "YYYY-MM-DD (если есть, иначе '')"
-}
+{"action":"create_task","title":"Название (обязательно)","description":"","responsible":"","deadline":"YYYY-MM-DD или ''"}
 
 update_task:
-{
-  "action": "update_task",
-  "task_id": 123,
-  "deadline": "YYYY-MM-DD"
-}
+{"action":"update_task","task_id":123,"deadline":"YYYY-MM-DD"}
+
+get_task:
+{"action":"get_task","task_id":123}
+
+list_tasks:
+{"action":"list_tasks","responsible":"Имя или ''"}
 
 create_lead:
-{
-  "action": "create_lead",
-  "title": "Название лида",
-  "name": "Имя контакта (если есть, иначе '')",
-  "phone": "Телефон без пробелов (если есть, иначе '')",
-  "email": "Email (если есть, иначе '')",
-  "comment": "Комментарий (если есть, иначе '')"
-}
+{"action":"create_lead","title":"Название","name":"","phone":"","email":"","comment":""}
 
 create_deal:
-{
-  "action": "create_deal",
-  "title": "Название сделки",
-  "amount": 0,
-  "currency": "RUB",
-  "contact_name": "Имя контакта (если есть, иначе '')",
-  "comment": "Комментарий (если есть, иначе '')"
-}
+{"action":"create_deal","title":"Название","amount":0,"currency":"RUB","contact_name":"","comment":""}
+
+search_leads:
+{"action":"search_leads","query":"строка поиска"}
+
+search_deals:
+{"action":"search_deals","query":"строка поиска"}
 
 unknown:
-{
-  "action": "unknown"
-}
+{"action":"unknown"}
 
 Правила:
 - Даты переводи в формат YYYY-MM-DD, учитывая сегодняшнюю дату.

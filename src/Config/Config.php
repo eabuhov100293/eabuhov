@@ -15,6 +15,8 @@ class Config
     public readonly array  $allowedUserIds;
     public readonly string $logLevel;
     public readonly string $logFile;
+    public readonly string $webhookSecret;
+    public readonly bool   $ttsEnabled;
 
     public function __construct(string $envPath)
     {
@@ -31,8 +33,10 @@ class Config
             ? array_map('intval', explode(',', $ids))
             : [];
 
-        $this->logLevel = $_ENV['LOG_LEVEL'] ?? 'info';
-        $this->logFile  = $_ENV['LOG_FILE'] ?? 'logs/bot.log';
+        $this->logLevel      = $_ENV['LOG_LEVEL'] ?? 'info';
+        $this->logFile       = $_ENV['LOG_FILE'] ?? 'logs/bot.log';
+        $this->webhookSecret = $_ENV['WEBHOOK_SECRET'] ?? '';
+        $this->ttsEnabled    = filter_var($_ENV['TTS_ENABLED'] ?? 'false', FILTER_VALIDATE_BOOLEAN);
     }
 
     private function require(string $key): string
