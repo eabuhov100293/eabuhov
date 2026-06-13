@@ -92,6 +92,8 @@ class TelegramService
             CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => 15,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_IPRESOLVE      => CURL_IPRESOLVE_V4,
         ]);
 
         $result = curl_exec($ch);
@@ -117,7 +119,9 @@ class TelegramService
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => 30,
+            CURLOPT_CONNECTTIMEOUT => 5,
             CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_IPRESOLVE      => CURL_IPRESOLVE_V4,
         ]);
         $data  = curl_exec($ch);
         $error = curl_error($ch);
