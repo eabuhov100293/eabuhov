@@ -137,8 +137,6 @@ class TelegramBot
     private function handleVoice(array $message, int $chatId, int $userId): void
     {
         $fileId = $message['voice']['file_id'];
-        $this->telegram->sendMessage($chatId, '🎙 Распознаю речь...');
-
         $audioData = $this->telegram->downloadFile($fileId);
         $text = $this->speechKit->recognize($audioData);
 
@@ -146,8 +144,6 @@ class TelegramBot
             $this->telegram->sendMessage($chatId, '❌ Не удалось распознать речь. Попробуйте ещё раз.');
             return;
         }
-
-        $this->telegram->sendMessage($chatId, "📝 Распознано: *{$text}*", 'Markdown');
 
         // Если идёт диалог — голосовой ответ тоже передаём в диалог
         if ($this->dealDialog->isActive($userId)) {
