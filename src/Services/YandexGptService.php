@@ -33,13 +33,13 @@ class YandexGptService
     {
         $t = mb_strtolower(trim($text));
 
-        if (preg_match('/создай?\s+(лид|lead)/u', $t))        return ['action' => 'create_lead'];
-        if (preg_match('/создай?\s+(сделк|deal)/u', $t))      return ['action' => 'create_deal'];
-        if (preg_match('/(создай?|поставь?|добавь?)\s+(задач|task)/u', $t)) return ['action' => 'create_task'];
-        if (preg_match('/поставь?\s+задач/u', $t))            return ['action' => 'create_task'];
-        if (preg_match('/мои\s+задач|покажи\s+задач|список\s+задач/u', $t)) return ['action' => 'list_tasks', 'responsible' => ''];
-        if (preg_match('/найди?\s+(лид|lead)/u', $t))         return ['action' => 'search_leads', 'query' => preg_replace('/.*?(лид|lead)\s*/u', '', $t)];
-        if (preg_match('/найди?\s+(сделк|deal)/u', $t))       return ['action' => 'search_deals', 'query' => preg_replace('/.*?(сделк\w*|deal)\s*/u', '', $t)];
+        if (preg_match('/созда\w*\s+(лид|lead)/u', $t))                      return ['action' => 'create_lead'];
+        if (preg_match('/созда\w*\s+(сделк|deal)/u', $t))                    return ['action' => 'create_deal'];
+        if (preg_match('/(созда\w*|поста\w*|добав\w*)\s+(задач|task)/u', $t)) return ['action' => 'create_task'];
+        if (preg_match('/поста\w*\s+задач/u', $t))                           return ['action' => 'create_task'];
+        if (preg_match('/мои\s+задач|покажи\s+задач|список\s+задач/u', $t))  return ['action' => 'list_tasks', 'responsible' => ''];
+        if (preg_match('/найд\w*\s+(лид|lead)/u', $t))                       return ['action' => 'search_leads', 'query' => preg_replace('/.*?(лид|lead)\s*/u', '', $t)];
+        if (preg_match('/найд\w*\s+(сделк|deal)/u', $t))                     return ['action' => 'search_deals', 'query' => preg_replace('/.*?(сделк\w*|deal)\s*/u', '', $t)];
 
         return null;
     }
