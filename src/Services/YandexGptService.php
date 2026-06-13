@@ -20,7 +20,7 @@ class YandexGptService
         private readonly string $folderId,
         private readonly Logger $log
     ) {
-        $this->modelUri = "gpt://{$folderId}/yandexgpt/latest";
+        $this->modelUri = "gpt://{$folderId}/yandexgpt-lite/latest";
     }
 
     /**
@@ -29,6 +29,21 @@ class YandexGptService
      *           create_lead | create_deal | search_leads | search_deals | unknown
      *   + поля, специфичные для каждого action
      */
+    public function quickMatch(string $text): ?array
+    {
+        $t = mb_strtolower(trim($text));
+
+        if (preg_match('/создай?\s+(лид|lead)/u', $t))        return ['action' => 'create_lead'];
+        if (preg_match('/создай?\s+(сделк|deal)/u', $t))      return ['action' => 'create_deal'];
+        if (preg_match('/(создай?|поставь?|добавь?)\s+(задач|task)/u', $t)) return ['action' => 'create_task'];
+        if (preg_match('/поставь?\s+задач/u', $t))            return ['action' => 'create_task'];
+        if (preg_match('/мои\s+задач|покажи\s+задач|список\s+задач/u', $t)) return ['action' => 'list_tasks', 'responsible' => ''];
+        if (preg_match('/найди?\s+(лид|lead)/u', $t))         return ['action' => 'search_leads', 'query' => preg_replace('/.*?(лид|lead)\s*/u', '', $t)];
+        if (preg_match('/найди?\s+(сделк|deal)/u', $t))       return ['action' => 'search_deals', 'query' => preg_replace('/.*?(сделк\w*|deal)\s*/u', '', $t)];
+
+        return null;
+    }
+
     public function parseIntent(string $userText): ?array
     {
         $systemPrompt = $this->buildSystemPrompt();

@@ -219,7 +219,10 @@ class TelegramBot
 
     private function processCommand(string $text, int $chatId, int $userId, bool $voiceMode = false): void
     {
-        $intent = $this->gpt->parseIntent($text);
+        $intent = $this->gpt->quickMatch($text);
+        if ($intent === null) {
+            $intent = $this->gpt->parseIntent($text);
+        }
         $this->log->info('Parsed intent', ['action' => $intent['action'] ?? 'null']);
 
         if (!$intent || ($intent['action'] ?? '') === 'unknown') {
