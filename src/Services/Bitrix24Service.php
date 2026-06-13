@@ -102,7 +102,103 @@ class Bitrix24Service
         return "✅ Лид создан!\n\nНазвание: {$title}{$phone}\nID: {$leadId}";
     }
 
-    // ─── CRM: Сделки ─────────────────────────────────────────────────────────
+    // ─── CRM: Сделки (диалог) ────────────────────────────────────────────────
+
+    public function createDealFromDialog(array $data): string
+    {
+        $title = $data['title'] ?? 'Новая сделка';
+
+        $fields = [
+            'TITLE'       => $title,
+            'CURRENCY_ID' => 'RUB',
+        ];
+
+        // Сумма
+        if (!empty($data['amount'])) {
+            $num = preg_replace('/[^\d.]/', '', $data['amount']);
+            if ($num) {
+                $fields['OPPORTUNITY'] = (float)$num;
+            }
+        }
+
+        // Компания
+        if (!empty($data['company'])) {
+            $companyId = $this->findCompanyId($data['company']);
+            if ($companyId) {
+                $fields['COMPANY_ID'] = $companyId;
+            } else {
+                // Создаём компанию если не найдена
+                $newCompanyId = $this->createCompany($data['company']);
+                if ($newCompanyId) {
+                    $fields['COMPANY_ID'] = $newCompanyId;
+                }
+            }
+        }
+
+        // Ответственный
+        if (!empty($data['responsible'])) {
+            $userId = $this->findUserId($data['responsible']);
+            if ($userId) {
+                $fields['ASSIGNED_BY_ID'] = $userId;
+            }
+        }
+
+        // Заказчик (контакт)
+        if (!empty($data['contact'])) {
+            $contactId = $this->findContactId($data['contact']);
+            if ($contactId) {
+                $fields['CONTACT_ID'] = $contactId;
+            }
+        }
+
+        $result = $this->call('crm.deal.add', ['fields' => $fields]);
+        $dealId = $result['result'] ?? null;
+
+        if (!$dealId) {
+            $this->log->error('crm.deal.add (dialog) failed', ['result' => $result]);
+            return '❌ Не удалось создать сделку. Проверьте настройки Bitrix24.';
+        }
+
+        $portalUrl = $this->getPortalUrl();
+        $amount    = !empty($data['amount']) ? "\n💰 Сумма: " . $this->formatAmount($data['amount']) : '';
+        $company   = !empty($data['company']) ? "\n🏢 Компания: {$data['company']}" : '';
+        $resp      = !empty($data['responsible']) ? "\n👤 Ответственный: {$data['responsible']}" : '';
+        $contact   = !empty($data['contact']) ? "\n🤝 Заказчик: {$data['contact']}" : '';
+
+        return "✅ *Сделка создана!*\n\n"
+            . "🏷 Название: {$title}"
+            . $amount . $company . $resp . $contact
+            . "\n🆔 ID: {$dealId}\n"
+            . "{$portalUrl}/crm/deal/details/{$dealId}/";
+    }
+
+    private function formatAmount(string $amount): string
+    {
+        $num = preg_replace('/[^\d.]/', '', $amount);
+        if (!$num) {
+            return $amount;
+        }
+        return number_format((float)$num, 0, '.', ' ') . ' ₽';
+    }
+
+    private function findCompanyId(string $name): ?int
+    {
+        $result = $this->call('crm.company.list', [
+            'filter' => ['%TITLE' => $name],
+            'select' => ['ID', 'TITLE'],
+        ]);
+        return isset($result['result'][0]['ID']) ? (int)$result['result'][0]['ID'] : null;
+    }
+
+    private function createCompany(string $name): ?int
+    {
+        $result = $this->call('crm.company.add', [
+            'fields' => ['TITLE' => $name],
+        ]);
+        return isset($result['result']) ? (int)$result['result'] : null;
+    }
+
+    // ─── CRM: Сделки (голос/текст) ───────────────────────────────────────────
 
     public function createDeal(array $intent): string
     {

@@ -9,6 +9,8 @@ use App\Services\SpeechKitService;
 use App\Services\YandexGptService;
 use App\Services\Bitrix24Service;
 use App\Services\TelegramService;
+use App\Session\SessionManager;
+use App\Dialog\DealDialog;
 use Monolog\Logger;
 use Monolog\Handler\StreamHandler;
 
@@ -19,6 +21,8 @@ class TelegramBot
     private readonly SpeechKitService $speechKit;
     private readonly YandexGptService $gpt;
     private readonly Bitrix24Service  $bitrix;
+    private readonly SessionManager   $session;
+    private readonly DealDialog       $dealDialog;
 
     public function __construct(private readonly Config $config)
     {
@@ -29,10 +33,12 @@ class TelegramBot
         }
         $this->log->pushHandler(new StreamHandler($config->logFile, $config->logLevel));
 
-        $this->telegram  = new TelegramService($config->telegramBotToken, $this->log);
-        $this->speechKit = new SpeechKitService($config->yandexApiKey, $config->yandexFolderId, $this->log);
-        $this->gpt       = new YandexGptService($config->yandexApiKey, $config->yandexFolderId, $this->log);
-        $this->bitrix    = new Bitrix24Service($config->bitrix24WebhookUrl, $this->log);
+        $this->telegram   = new TelegramService($config->telegramBotToken, $this->log);
+        $this->speechKit  = new SpeechKitService($config->yandexApiKey, $config->yandexFolderId, $this->log);
+        $this->gpt        = new YandexGptService($config->yandexApiKey, $config->yandexFolderId, $this->log);
+        $this->bitrix     = new Bitrix24Service($config->bitrix24WebhookUrl, $this->log);
+        $this->session    = new SessionManager(dirname($config->logFile));
+        $this->dealDialog = new DealDialog($this->session, $this->bitrix, $this->telegram);
     }
 
     public function handleWebhook(): void
@@ -43,7 +49,7 @@ class TelegramBot
             return;
         }
 
-        // Проверка секретного токена Telegram (X-Telegram-Bot-Api-Secret-Token)
+        // Проверка секретного токена Telegram
         if ($this->config->webhookSecret !== '') {
             $header = $_SERVER['HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN'] ?? '';
             if (!hash_equals($this->config->webhookSecret, $header)) {
@@ -77,34 +83,44 @@ class TelegramBot
         }
 
         try {
-            $this->dispatch($message, $chatId);
+            $this->dispatch($message, $chatId, $userId);
         } catch (\Throwable $e) {
             $this->log->error('Unhandled error', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             $this->telegram->sendMessage($chatId, '❌ Произошла ошибка. Попробуйте ещё раз.');
         }
     }
 
-    private function dispatch(array $message, int $chatId): void
+    private function dispatch(array $message, int $chatId, int $userId): void
     {
+        // Голосовое сообщение — сначала распознаём, затем проверяем диалог
         if (isset($message['voice'])) {
-            $this->handleVoice($message, $chatId);
+            $this->handleVoice($message, $chatId, $userId);
             return;
         }
 
         if (isset($message['text'])) {
             $text = trim($message['text']);
-            if (str_starts_with($text, '/')) {
+
+            // Команды /start /help всегда обрабатываем сразу
+            if (str_starts_with($text, '/') && !in_array(mb_strtolower($text), ['/отмена', '/cancel'], true)) {
                 $this->handleCommand($text, $chatId);
-            } else {
-                $this->handleText($text, $chatId);
+                return;
             }
+
+            // Если идёт активный диалог — передаём ответ в диалог
+            if ($this->dealDialog->isActive($userId)) {
+                $this->dealDialog->handle($userId, $chatId, $text);
+                return;
+            }
+
+            $this->handleText($text, $chatId, $userId);
             return;
         }
 
         $this->telegram->sendMessage($chatId, 'Отправьте голосовое сообщение или текстовую команду.');
     }
 
-    private function handleVoice(array $message, int $chatId): void
+    private function handleVoice(array $message, int $chatId, int $userId): void
     {
         $fileId = $message['voice']['file_id'];
         $this->telegram->sendMessage($chatId, '🎙 Распознаю речь...');
@@ -118,12 +134,19 @@ class TelegramBot
         }
 
         $this->telegram->sendMessage($chatId, "📝 Распознано: *{$text}*", 'Markdown');
-        $this->processCommand($text, $chatId, voiceMode: true);
+
+        // Если идёт диалог — голосовой ответ тоже передаём в диалог
+        if ($this->dealDialog->isActive($userId)) {
+            $this->dealDialog->handle($userId, $chatId, $text);
+            return;
+        }
+
+        $this->processCommand($text, $chatId, $userId, voiceMode: true);
     }
 
-    private function handleText(string $text, int $chatId): void
+    private function handleText(string $text, int $chatId, int $userId): void
     {
-        $this->processCommand($text, $chatId, voiceMode: false);
+        $this->processCommand($text, $chatId, $userId, voiceMode: false);
     }
 
     private function handleCommand(string $text, int $chatId): void
@@ -150,15 +173,15 @@ class TelegramBot
                     "📖 *Примеры команд:*\n\n"
                     . "*Задачи:*\n"
                     . "• «Создай задачу позвонить клиенту до пятницы»\n"
-                    . "• «Создай задачу подготовить отчёт ответственный Иван срок 20 июня»\n"
                     . "• «Измени срок задачи 123 на 25 июня»\n"
                     . "• «Покажи задачу 123»\n"
                     . "• «Покажи мои задачи»\n\n"
-                    . "*CRM:*\n"
-                    . "• «Создай лид Иван Иванов телефон 79001234567»\n"
-                    . "• «Создай сделку покупка оборудования сумма 50000»\n"
-                    . "• «Найди лид Иванов»\n"
+                    . "*CRM — Сделки:*\n"
+                    . "• «Создай сделку» — пошаговый диалог\n"
                     . "• «Найди сделку оборудование»\n\n"
+                    . "*CRM — Лиды:*\n"
+                    . "• «Создай лид Иван Иванов телефон 79001234567»\n"
+                    . "• «Найди лид Иванов»\n\n"
                     . "Можно говорить голосом или писать текстом.",
                     'Markdown'
                 );
@@ -169,7 +192,7 @@ class TelegramBot
         }
     }
 
-    private function processCommand(string $text, int $chatId, bool $voiceMode = false): void
+    private function processCommand(string $text, int $chatId, int $userId, bool $voiceMode = false): void
     {
         $this->telegram->sendMessage($chatId, '⚙️ Обрабатываю команду...');
 
@@ -177,17 +200,22 @@ class TelegramBot
         $this->log->info('Parsed intent', ['action' => $intent['action'] ?? 'null']);
 
         if (!$intent || ($intent['action'] ?? '') === 'unknown') {
-            $reply = "Не удалось определить действие.\n\nОтправьте /help для просмотра примеров.";
-            $this->telegram->sendMessage($chatId, $reply);
+            $this->telegram->sendMessage(
+                $chatId,
+                "Не удалось определить действие.\n\nОтправьте /help для просмотра примеров."
+            );
+            return;
+        }
+
+        // Сделка — запускаем пошаговый диалог
+        if ($intent['action'] === 'create_deal') {
+            $this->dealDialog->start($userId, $chatId);
             return;
         }
 
         $result = $this->executeIntent($intent);
-
-        // Для чтения — Markdown, для создания — тоже
         $this->telegram->sendMessage($chatId, $result, 'Markdown');
 
-        // Голосовой ответ — только если пришло голосовое сообщение и TTS включён
         if ($voiceMode && $this->config->ttsEnabled) {
             $this->sendVoiceReply($chatId, $result);
         }
@@ -201,7 +229,6 @@ class TelegramBot
             'get_task'     => $this->bitrix->getTask($intent),
             'list_tasks'   => $this->bitrix->listMyTasks($intent),
             'create_lead'  => $this->bitrix->createLead($intent),
-            'create_deal'  => $this->bitrix->createDeal($intent),
             'search_leads' => $this->bitrix->searchLeads($intent),
             'search_deals' => $this->bitrix->searchDeals($intent),
             default        => 'Действие не поддерживается.',
@@ -210,15 +237,12 @@ class TelegramBot
 
     private function sendVoiceReply(int $chatId, string $text): void
     {
-        // Убираем Markdown-разметку для TTS
         $clean = preg_replace('/[*_`\[\]()~>#+\-=|{}.!]/', '', $text);
         $clean = preg_replace('/\n+/', '. ', $clean);
 
         $audio = $this->speechKit->synthesize($clean);
         if ($audio) {
             $this->telegram->sendVoice($chatId, $audio);
-        } else {
-            $this->log->warning('TTS synthesis failed, skipping voice reply');
         }
     }
 
