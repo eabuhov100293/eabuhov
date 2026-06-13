@@ -13,7 +13,152 @@ class Bitrix24Service
         private readonly Logger $log
     ) {}
 
-    // ─── Задачи ──────────────────────────────────────────────────────────────
+    // ─── Задачи (диалог) ─────────────────────────────────────────────────────
+
+    public function createTaskFromDialog(array $data): string
+    {
+        $title = $data['task_type'] ?? 'Новая задача';
+        // Убираем эмодзи из типа
+        $typeClean = preg_replace('/[\x{1F300}-\x{1FFFF}\x{2600}-\x{27FF}]\s*/u', '', $title);
+        $title = trim($typeClean);
+        if (!empty($data['link_query'])) {
+            $title .= ': ' . $data['link_query'];
+        }
+
+        $description = $data['comment'] ?? '';
+
+        $fields = [
+            'TITLE'       => $title,
+            'DESCRIPTION' => $description,
+        ];
+
+        // Ответственный
+        if (!empty($data['responsible'])) {
+            $userId = $this->findUserId($data['responsible']);
+            if ($userId) {
+                $fields['RESPONSIBLE_ID'] = $userId;
+            }
+        }
+
+        // Срок
+        if (!empty($data['deadline'])) {
+            $deadline = $this->parseRussianDate($data['deadline']);
+            if ($deadline) {
+                $fields['DEADLINE'] = $this->toIso8601($deadline);
+            }
+        }
+
+        // Привязка к сделке / компании / контакту
+        if (!empty($data['link_type']) && $data['link_type'] !== 'none' && !empty($data['link_query'])) {
+            $this->attachTaskLink($fields, $data['link_type'], $data['link_query']);
+        }
+
+        $result = $this->call('tasks.task.add', ['fields' => $fields]);
+        $taskId = $result['result']['task']['id'] ?? null;
+
+        if (!$taskId) {
+            $this->log->error('tasks.task.add (dialog) failed', ['result' => $result]);
+            return '❌ Не удалось создать задачу. Проверьте настройки Bitrix24.';
+        }
+
+        $portalUrl   = $this->getPortalUrl();
+        $responsible = !empty($data['responsible']) ? "\n👤 Ответственный: {$data['responsible']}" : '';
+        $deadline    = !empty($data['deadline']) ? "\n📅 Срок: {$data['deadline']}" : '';
+        $link        = (!empty($data['link_type']) && $data['link_type'] !== 'none' && !empty($data['link_query']))
+            ? "\n🔗 Привязка: {$data['link_query']}"
+            : '';
+
+        return "✅ *Задача создана!*\n\n"
+            . "🏷 Название: {$title}"
+            . $responsible . $deadline . $link
+            . "\n🆔 ID: {$taskId}\n"
+            . "{$portalUrl}/company/personal/user/0/tasks/task/view/{$taskId}/";
+    }
+
+    private function attachTaskLink(array &$fields, string $linkType, string $query): void
+    {
+        switch ($linkType) {
+            case 'сделка':
+                // Если число — используем как ID, иначе ищем по названию
+                if (is_numeric($query)) {
+                    $fields['UF_CRM_TASK'] = ["D_{$query}"];
+                } else {
+                    $result = $this->call('crm.deal.list', [
+                        'filter' => ['%TITLE' => $query],
+                        'select' => ['ID'],
+                    ]);
+                    $dealId = $result['result'][0]['ID'] ?? null;
+                    if ($dealId) {
+                        $fields['UF_CRM_TASK'] = ["D_{$dealId}"];
+                    }
+                }
+                break;
+
+            case 'компания':
+                $companyId = is_numeric($query)
+                    ? (int)$query
+                    : $this->findCompanyId($query);
+                if ($companyId) {
+                    $fields['UF_CRM_TASK'] = ["CO_{$companyId}"];
+                }
+                break;
+
+            case 'контакт':
+                $contactId = is_numeric($query)
+                    ? (int)$query
+                    : $this->findContactId($query);
+                if ($contactId) {
+                    $fields['UF_CRM_TASK'] = ["C_{$contactId}"];
+                }
+                break;
+        }
+    }
+
+    private function parseRussianDate(string $text): ?string
+    {
+        $text = mb_strtolower(trim($text));
+        $today = new \DateTimeImmutable('now', new \DateTimeZone('Europe/Moscow'));
+
+        $map = [
+            'сегодня'      => $today->format('Y-m-d'),
+            'завтра'       => $today->modify('+1 day')->format('Y-m-d'),
+            'послезавтра'  => $today->modify('+2 days')->format('Y-m-d'),
+            'понедельник'  => $this->nextWeekday($today, 1),
+            'вторник'      => $this->nextWeekday($today, 2),
+            'среда'        => $this->nextWeekday($today, 3),
+            'среду'        => $this->nextWeekday($today, 3),
+            'четверг'      => $this->nextWeekday($today, 4),
+            'пятница'      => $this->nextWeekday($today, 5),
+            'пятницу'      => $this->nextWeekday($today, 5),
+            'суббота'      => $this->nextWeekday($today, 6),
+            'субботу'      => $this->nextWeekday($today, 6),
+            'воскресенье'  => $this->nextWeekday($today, 7),
+        ];
+
+        if (isset($map[$text])) {
+            return $map[$text];
+        }
+
+        // Попробуем PHP парсер
+        try {
+            $dt = new \DateTimeImmutable($text, new \DateTimeZone('Europe/Moscow'));
+            return $dt->format('Y-m-d');
+        } catch (\Exception) {
+            return null;
+        }
+    }
+
+    private function nextWeekday(\DateTimeImmutable $from, int $weekday): string
+    {
+        $current = (int)$from->format('N');
+        $diff = $weekday - $current;
+        if ($diff <= 0) {
+            $diff += 7;
+        }
+        return $from->modify("+{$diff} days")->format('Y-m-d');
+    }
+
+    // ─── Задачи (голос/текст) ─────────────────────────────────────────────────
 
     public function createTask(array $intent): string
     {

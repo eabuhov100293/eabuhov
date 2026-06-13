@@ -12,6 +12,7 @@ use App\Services\TelegramService;
 use App\Session\SessionManager;
 use App\Dialog\DealDialog;
 use App\Dialog\LeadDialog;
+use App\Dialog\TaskDialog;
 use Monolog\Logger;
 use Monolog\Handler\StreamHandler;
 
@@ -25,6 +26,7 @@ class TelegramBot
     private readonly SessionManager   $session;
     private readonly DealDialog       $dealDialog;
     private readonly LeadDialog       $leadDialog;
+    private readonly TaskDialog       $taskDialog;
 
     public function __construct(private readonly Config $config)
     {
@@ -42,6 +44,7 @@ class TelegramBot
         $this->session    = new SessionManager(dirname($config->logFile));
         $this->dealDialog = new DealDialog($this->session, $this->bitrix, $this->telegram);
         $this->leadDialog = new LeadDialog($this->session, $this->bitrix, $this->telegram);
+        $this->taskDialog = new TaskDialog($this->session, $this->bitrix, $this->telegram);
     }
 
     public function handleWebhook(): void
@@ -119,6 +122,10 @@ class TelegramBot
                 $this->leadDialog->handle($userId, $chatId, $text);
                 return;
             }
+            if ($this->taskDialog->isActive($userId)) {
+                $this->taskDialog->handle($userId, $chatId, $text);
+                return;
+            }
 
             $this->handleText($text, $chatId, $userId);
             return;
@@ -151,6 +158,10 @@ class TelegramBot
             $this->leadDialog->handle($userId, $chatId, $text);
             return;
         }
+        if ($this->taskDialog->isActive($userId)) {
+            $this->taskDialog->handle($userId, $chatId, $text);
+            return;
+        }
 
         $this->processCommand($text, $chatId, $userId, voiceMode: true);
     }
@@ -173,7 +184,7 @@ class TelegramBot
                     . "Например: «Создай лид» — пошаговый диалог с заполнением всех полей\n\n"
                     . "2️⃣ *Постановка и корректировка задачи*\n"
                     . "Например:\n"
-                    . "• «Создай задачу позвонить клиенту до пятницы»\n"
+                    . "• «Поставь задачу» — пошаговый диалог с привязкой к сделке/компании/контакту\n"
                     . "• «Измени срок задачи 123 на 25 июня»\n"
                     . "• «Покажи мои задачи»\n\n"
                     . "3️⃣ *Постановка и корректировка сделки*\n"
@@ -233,6 +244,11 @@ class TelegramBot
 
         if ($intent['action'] === 'create_lead') {
             $this->leadDialog->start($userId, $chatId);
+            return;
+        }
+
+        if ($intent['action'] === 'create_task') {
+            $this->taskDialog->start($userId, $chatId);
             return;
         }
 
