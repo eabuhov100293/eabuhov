@@ -93,7 +93,7 @@ class TelegramService
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => 15,
             CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_IPRESOLVE      => CURL_IPRESOLVE_V6,
+            CURLOPT_RESOLVE        => ['api.telegram.org:443:2001:67c:4e8:f004::9'],
         ]);
 
         $result = curl_exec($ch);
