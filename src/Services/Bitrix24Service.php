@@ -578,7 +578,8 @@ class Bitrix24Service
     private function findUserId(string $name): ?int
     {
         $result = $this->call('user.search', ['FILTER' => ['NAME' => $name]]);
-        return $result['result'][0]['ID'] ?? null;
+        $id = $result['result'][0]['ID'] ?? null;
+        return $id !== null ? (int)$id : null;
     }
 
     private function findContactId(string $name): ?int
