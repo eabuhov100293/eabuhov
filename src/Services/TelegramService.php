@@ -84,15 +84,19 @@ class TelegramService
     private function call(string $method, array $params): array
     {
         $url  = "{$this->apiBase}/{$method}";
-        $json = json_encode($params);
+        $json = json_encode($params, JSON_UNESCAPED_UNICODE);
+
+        $tmpFile = tempnam(sys_get_temp_dir(), 'tg_') . '.json';
+        file_put_contents($tmpFile, $json);
 
         $cmd    = 'curl -6 -s --max-time 10 -H ' . escapeshellarg('Content-Type: application/json')
-                . ' -d ' . escapeshellarg($json)
+                . ' -d ' . escapeshellarg('@' . $tmpFile)
                 . ' ' . escapeshellarg($url);
         $result = shell_exec($cmd);
+        @unlink($tmpFile);
 
         if (!$result) {
-            $this->log->error("Telegram shell_exec empty result", ['method' => $method, 'cmd' => $cmd]);
+            $this->log->error("Telegram shell_exec empty result", ['method' => $method]);
             throw new \RuntimeException("Telegram API shell_exec failed");
         }
 
