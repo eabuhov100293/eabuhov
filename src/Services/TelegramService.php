@@ -93,7 +93,7 @@ class TelegramService
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => 15,
             CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_IPRESOLVE      => CURL_IPRESOLVE_V4,
+            CURLOPT_IPRESOLVE      => CURL_IPRESOLVE_V6,
         ]);
 
         $result = curl_exec($ch);
@@ -121,7 +121,7 @@ class TelegramService
             CURLOPT_TIMEOUT        => 30,
             CURLOPT_CONNECTTIMEOUT => 5,
             CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_IPRESOLVE      => CURL_IPRESOLVE_V4,
+            CURLOPT_IPRESOLVE      => CURL_IPRESOLVE_V6,
         ]);
         $data  = curl_exec($ch);
         $error = curl_error($ch);
