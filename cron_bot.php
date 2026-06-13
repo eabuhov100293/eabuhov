@@ -11,35 +11,40 @@ $config = new Config(__DIR__ . '/.env');
 $bot    = new TelegramBot($config);
 
 $offsetFile = dirname($config->logFile) . '/last_update_id.txt';
-$offset     = file_exists($offsetFile) ? (int)file_get_contents($offsetFile) + 1 : 0;
+$endTime    = time() + 55; // loop for 55 seconds per cron run
 
-$params = ['timeout' => 25, 'limit' => 10];
-if ($offset > 0) {
-    $params['offset'] = $offset;
-}
+while (time() < $endTime) {
+    $offset = file_exists($offsetFile) ? (int)file_get_contents($offsetFile) + 1 : 0;
 
-$tmpFile = sys_get_temp_dir() . '/tg_poll.json';
-file_put_contents($tmpFile, json_encode($params));
+    $params = ['timeout' => 15, 'limit' => 10];
+    if ($offset > 0) {
+        $params['offset'] = $offset;
+    }
 
-$url    = "https://api.telegram.org/bot{$config->telegramBotToken}/getUpdates";
-$result = shell_exec(
-    'curl -6 -s --max-time 30 -H ' . escapeshellarg('Content-Type: application/json')
-    . ' -d ' . escapeshellarg('@' . $tmpFile)
-    . ' ' . escapeshellarg($url)
-);
-@unlink($tmpFile);
+    $tmpFile = sys_get_temp_dir() . '/tg_poll.json';
+    file_put_contents($tmpFile, json_encode($params));
 
-if (!$result) {
-    exit(0);
-}
+    $url    = "https://api.telegram.org/bot{$config->telegramBotToken}/getUpdates";
+    $result = shell_exec(
+        'curl -6 -s --max-time 20 -H ' . escapeshellarg('Content-Type: application/json')
+        . ' -d ' . escapeshellarg('@' . $tmpFile)
+        . ' ' . escapeshellarg($url)
+    );
+    @unlink($tmpFile);
 
-$data = json_decode($result, true);
-if (!($data['ok'] ?? false) || empty($data['result'])) {
-    exit(0);
-}
+    if (!$result) {
+        sleep(2);
+        continue;
+    }
 
-foreach ($data['result'] as $update) {
-    $updateId = (int)$update['update_id'];
-    file_put_contents($offsetFile, (string)$updateId);
-    $bot->processUpdate($update);
+    $data = json_decode($result, true);
+    if (!($data['ok'] ?? false) || empty($data['result'])) {
+        continue;
+    }
+
+    foreach ($data['result'] as $update) {
+        $updateId = (int)$update['update_id'];
+        file_put_contents($offsetFile, (string)$updateId);
+        $bot->processUpdate($update);
+    }
 }
