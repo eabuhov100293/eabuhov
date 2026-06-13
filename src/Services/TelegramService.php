@@ -83,44 +83,17 @@ class TelegramService
 
     private function call(string $method, array $params): array
     {
-        $url = "{$this->apiBase}/{$method}";
-        $ch  = curl_init($url);
+        $url  = "{$this->apiBase}/{$method}";
+        $json = json_encode($params);
 
-        curl_setopt_array($ch, [
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => json_encode($params),
-            CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => 15,
-            CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_RESOLVE        => ['api.telegram.org:443:2001:67c:4e8:f004::9'],
-        ]);
+        $cmd    = 'curl -6 -s --max-time 10 -H ' . escapeshellarg('Content-Type: application/json')
+                . ' -d ' . escapeshellarg($json)
+                . ' ' . escapeshellarg($url);
+        $result = shell_exec($cmd);
 
-        $result = curl_exec($ch);
-        $error  = curl_error($ch);
-        curl_close($ch);
-
-        if ($error) {
-            $this->log->warning("Telegram API cURL retry: {$error}", ['method' => $method]);
-            usleep(500000);
-            $ch = curl_init($url);
-            curl_setopt_array($ch, [
-                CURLOPT_POST           => true,
-                CURLOPT_POSTFIELDS     => json_encode($params),
-                CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT        => 15,
-                CURLOPT_CONNECTTIMEOUT => 5,
-                CURLOPT_RESOLVE        => ['api.telegram.org:443:2001:67c:4e8:f004::9'],
-            ]);
-            $result = curl_exec($ch);
-            $error  = curl_error($ch);
-            curl_close($ch);
-        }
-
-        if ($error) {
-            $this->log->error("Telegram API cURL error: {$error}", ['method' => $method]);
-            throw new \RuntimeException("Telegram API error: {$error}");
+        if (!$result) {
+            $this->log->error("Telegram shell_exec empty result", ['method' => $method, 'cmd' => $cmd]);
+            throw new \RuntimeException("Telegram API shell_exec failed");
         }
 
         $decoded = json_decode($result, true);
