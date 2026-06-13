@@ -38,7 +38,7 @@ class YandexGptService
             'completionOptions' => [
                 'stream'      => false,
                 'temperature' => 0.1,
-                'maxTokens'   => 500,
+                'maxTokens'   => 150,
             ],
             'messages' => [
                 ['role' => 'system', 'text' => $systemPrompt],
@@ -85,55 +85,20 @@ class YandexGptService
         $today = date('Y-m-d');
 
         return <<<PROMPT
-Ты — ассистент для управления Bitrix24. Твоя задача — извлечь намерение и параметры из команды пользователя и вернуть ТОЛЬКО валидный JSON без каких-либо пояснений.
+Bitrix24 ассистент. Дата: {$today}. Верни ТОЛЬКО JSON.
 
-Сегодняшняя дата: {$today}
+Действия:
+create_task: {"action":"create_task","title":"","responsible":"","deadline":"YYYY-MM-DD или ''"}
+update_task: {"action":"update_task","task_id":0,"deadline":"YYYY-MM-DD"}
+get_task: {"action":"get_task","task_id":0}
+list_tasks: {"action":"list_tasks","responsible":""}
+create_lead: {"action":"create_lead","name":"","phone":"","comment":""}
+create_deal: {"action":"create_deal","title":"","amount":0,"contact_name":""}
+search_leads: {"action":"search_leads","query":""}
+search_deals: {"action":"search_deals","query":""}
+unknown: {"action":"unknown"}
 
-Возможные действия (поле "action"):
-1.  create_task   — создание задачи
-2.  update_task   — изменение срока задачи
-3.  get_task      — просмотр одной задачи по ID
-4.  list_tasks    — список активных задач
-5.  create_lead   — создание лида в CRM
-6.  create_deal   — создание сделки в CRM
-7.  search_leads  — поиск лидов по названию или имени
-8.  search_deals  — поиск сделок по названию
-9.  unknown       — команда не распознана
-
-Схемы JSON для каждого действия:
-
-create_task:
-{"action":"create_task","title":"Название (обязательно)","description":"","responsible":"","deadline":"YYYY-MM-DD или ''"}
-
-update_task:
-{"action":"update_task","task_id":123,"deadline":"YYYY-MM-DD"}
-
-get_task:
-{"action":"get_task","task_id":123}
-
-list_tasks:
-{"action":"list_tasks","responsible":"Имя или ''"}
-
-create_lead:
-{"action":"create_lead","title":"Название","name":"","phone":"","email":"","comment":""}
-
-create_deal:
-{"action":"create_deal","title":"Название","amount":0,"currency":"RUB","contact_name":"","comment":""}
-
-search_leads:
-{"action":"search_leads","query":"строка поиска"}
-
-search_deals:
-{"action":"search_deals","query":"строка поиска"}
-
-unknown:
-{"action":"unknown"}
-
-Правила:
-- Даты переводи в формат YYYY-MM-DD, учитывая сегодняшнюю дату.
-- Слова «завтра», «послезавтра», «в пятницу», «20 июня» и т.п. преобразуй в конкретную дату.
-- Телефон нормализуй: убери пробелы, скобки, тире. Если начинается с 8, замени на +7.
-- Возвращай ТОЛЬКО JSON, без markdown-блоков, без пояснений.
+Правила: даты→YYYY-MM-DD, телефон нормализуй (8→+7), только JSON без markdown.
 PROMPT;
     }
 

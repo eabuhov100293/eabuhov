@@ -223,8 +223,6 @@ class TelegramBot
 
     private function processCommand(string $text, int $chatId, int $userId, bool $voiceMode = false): void
     {
-        $this->telegram->sendMessage($chatId, '⚙️ Обрабатываю команду...');
-
         $intent = $this->gpt->parseIntent($text);
         $this->log->info('Parsed intent', ['action' => $intent['action'] ?? 'null']);
 
