@@ -101,6 +101,24 @@ class TelegramService
         curl_close($ch);
 
         if ($error) {
+            $this->log->warning("Telegram API cURL retry: {$error}", ['method' => $method]);
+            usleep(500000);
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_POST           => true,
+                CURLOPT_POSTFIELDS     => json_encode($params),
+                CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 15,
+                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_RESOLVE        => ['api.telegram.org:443:2001:67c:4e8:f004::9'],
+            ]);
+            $result = curl_exec($ch);
+            $error  = curl_error($ch);
+            curl_close($ch);
+        }
+
+        if ($error) {
             $this->log->error("Telegram API cURL error: {$error}", ['method' => $method]);
             throw new \RuntimeException("Telegram API error: {$error}");
         }
