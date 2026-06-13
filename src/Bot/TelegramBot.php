@@ -47,6 +47,31 @@ class TelegramBot
         $this->taskDialog = new TaskDialog($this->session, $this->bitrix, $this->telegram);
     }
 
+    public function processUpdate(array $update): void
+    {
+        $this->log->debug('Incoming update', ['update_id' => $update['update_id'] ?? null]);
+
+        $message = $update['message'] ?? $update['edited_message'] ?? null;
+        if (!$message) {
+            return;
+        }
+
+        $chatId = $message['chat']['id'];
+        $userId = $message['from']['id'] ?? 0;
+
+        if (!$this->isAllowed($userId)) {
+            $this->telegram->sendMessage($chatId, 'У вас нет доступа к этому боту.');
+            return;
+        }
+
+        try {
+            $this->dispatch($message, $chatId, $userId);
+        } catch (\Throwable $e) {
+            $this->log->error('Unhandled error', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            $this->telegram->sendMessage($chatId, '❌ Произошла ошибка. Попробуйте ещё раз.');
+        }
+    }
+
     public function handleWebhook(): void
     {
         $body = file_get_contents('php://input');
