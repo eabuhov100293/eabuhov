@@ -100,7 +100,7 @@ class TaskDialog
                         'Markdown'
                     );
                 } else {
-                    $this->telegram->sendMessage($chatId, "Пожалуйста, введите цифру от 1 до 4.");
+                    $this->telegram->sendMessage($chatId, "Пожалуйста, введите цифру от 1 до 4:\n\n1 — Сделка\n2 — Компания\n3 — Контакт\n4 — Без привязки");
                 }
                 break;
 
