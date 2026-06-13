@@ -70,7 +70,55 @@ class Bitrix24Service
         return "✅ Срок задачи #{$taskId} изменён на {$deadline}.";
     }
 
-    // ─── CRM: Лиды ───────────────────────────────────────────────────────────
+    // ─── CRM: Лиды (диалог) ──────────────────────────────────────────────────
+
+    public function createLeadFromDialog(array $data): string
+    {
+        $name  = $data['name'] ?? 'Новый лид';
+        $title = $name;
+
+        $fields = [
+            'TITLE'    => $title,
+            'NAME'     => $name,
+            'COMMENTS' => $data['comment'] ?? '',
+        ];
+
+        if (!empty($data['phone'])) {
+            $fields['PHONE'] = [['VALUE' => $data['phone'], 'VALUE_TYPE' => 'WORK']];
+        }
+
+        // Компания — ищем, если не найдена — создаём
+        if (!empty($data['company'])) {
+            $companyId = $this->findCompanyId($data['company']);
+            if (!$companyId) {
+                $companyId = $this->createCompany($data['company']);
+            }
+            if ($companyId) {
+                $fields['COMPANY_ID'] = $companyId;
+            }
+        }
+
+        $result = $this->call('crm.lead.add', ['fields' => $fields]);
+        $leadId = $result['result'] ?? null;
+
+        if (!$leadId) {
+            $this->log->error('crm.lead.add (dialog) failed', ['result' => $result]);
+            return '❌ Не удалось создать лид. Проверьте настройки Bitrix24.';
+        }
+
+        $portalUrl = $this->getPortalUrl();
+        $phone     = !empty($data['phone']) ? "\n📞 Телефон: {$data['phone']}" : '';
+        $company   = !empty($data['company']) ? "\n🏢 Компания: {$data['company']}" : '';
+        $comment   = !empty($data['comment']) ? "\n💬 Комментарий: {$data['comment']}" : '';
+
+        return "✅ *Лид создан!*\n\n"
+            . "👤 Имя: {$name}"
+            . $phone . $company . $comment
+            . "\n🆔 ID: {$leadId}\n"
+            . "{$portalUrl}/crm/lead/details/{$leadId}/";
+    }
+
+    // ─── CRM: Лиды (голос/текст) ─────────────────────────────────────────────
 
     public function createLead(array $intent): string
     {

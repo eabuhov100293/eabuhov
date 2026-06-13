@@ -11,6 +11,7 @@ use App\Services\Bitrix24Service;
 use App\Services\TelegramService;
 use App\Session\SessionManager;
 use App\Dialog\DealDialog;
+use App\Dialog\LeadDialog;
 use Monolog\Logger;
 use Monolog\Handler\StreamHandler;
 
@@ -23,6 +24,7 @@ class TelegramBot
     private readonly Bitrix24Service  $bitrix;
     private readonly SessionManager   $session;
     private readonly DealDialog       $dealDialog;
+    private readonly LeadDialog       $leadDialog;
 
     public function __construct(private readonly Config $config)
     {
@@ -39,6 +41,7 @@ class TelegramBot
         $this->bitrix     = new Bitrix24Service($config->bitrix24WebhookUrl, $this->log);
         $this->session    = new SessionManager(dirname($config->logFile));
         $this->dealDialog = new DealDialog($this->session, $this->bitrix, $this->telegram);
+        $this->leadDialog = new LeadDialog($this->session, $this->bitrix, $this->telegram);
     }
 
     public function handleWebhook(): void
@@ -112,6 +115,10 @@ class TelegramBot
                 $this->dealDialog->handle($userId, $chatId, $text);
                 return;
             }
+            if ($this->leadDialog->isActive($userId)) {
+                $this->leadDialog->handle($userId, $chatId, $text);
+                return;
+            }
 
             $this->handleText($text, $chatId, $userId);
             return;
@@ -140,6 +147,10 @@ class TelegramBot
             $this->dealDialog->handle($userId, $chatId, $text);
             return;
         }
+        if ($this->leadDialog->isActive($userId)) {
+            $this->leadDialog->handle($userId, $chatId, $text);
+            return;
+        }
 
         $this->processCommand($text, $chatId, $userId, voiceMode: true);
     }
@@ -159,7 +170,7 @@ class TelegramBot
                     "👋 Привет! Я голосовой помощник для Bitrix24.\n\n"
                     . "Вот что я умею:\n\n"
                     . "1️⃣ *Создать лид*\n"
-                    . "Например: «Создай лид Иван Иванов телефон 79001234567»\n\n"
+                    . "Например: «Создай лид» — пошаговый диалог с заполнением всех полей\n\n"
                     . "2️⃣ *Постановка и корректировка задачи*\n"
                     . "Например:\n"
                     . "• «Создай задачу позвонить клиенту до пятницы»\n"
@@ -214,9 +225,14 @@ class TelegramBot
             return;
         }
 
-        // Сделка — запускаем пошаговый диалог
+        // Сделка и лид — запускаем пошаговый диалог
         if ($intent['action'] === 'create_deal') {
             $this->dealDialog->start($userId, $chatId);
+            return;
+        }
+
+        if ($intent['action'] === 'create_lead') {
+            $this->leadDialog->start($userId, $chatId);
             return;
         }
 
